@@ -138,6 +138,43 @@ void GameScreen::registerCommands(App& app) {
             country->money += amount;
             out.push_back("Gave " + cmd.argv[1] + " money to " + gs.controlledCountry + ".");
         });
+
+    cmdRegistry_.registerCommand("ideology",
+        [appPtr](const ConsoleCmd& cmd, std::vector<std::string>& out) {
+            if (cmd.argv.size() < 2) {
+                out.push_back("Usage: ideology <communist|nationalist|liberal|monarchist|nonaligned>");
+                return;
+            }
+            const std::string& name = cmd.argv[1];
+            float economic = 0.0f, social = 0.0f;
+            if      (name == "communist")   { economic = -1.0f; social = -1.0f; }
+            else if (name == "nationalist") { economic =  1.0f; social = -1.0f; }
+            else if (name == "liberal")     { economic = -1.0f; social =  1.0f; }
+            else if (name == "monarchist")  { economic =  1.0f; social =  1.0f; }
+            else if (name == "nonaligned")  { economic =  0.0f; social =  0.0f; }
+            else {
+                out.push_back("Unknown ideology: " + name);
+                out.push_back("Valid: communist, nationalist, liberal, monarchist, nonaligned");
+                return;
+            }
+            auto& gs = appPtr->gameState();
+            Country* country = gs.getCountry(gs.controlledCountry);
+            if (!country) {
+                out.push_back("No controlled country.");
+                return;
+            }
+            country->setIdeology({economic, social});
+            if (gs.ideologyMapSurf && gs.regionsMapSurf) {
+                Color ideColor = Helpers::getIdeologyColor(economic, social);
+                auto& rd = RegionData::instance();
+                for (int id : country->regions) {
+                    Vec2 loc = rd.getLocation(id);
+                    MapFunc::fillRegionMask(gs.ideologyMapSurf, gs.regionsMapSurf, id, loc.x, loc.y, ideColor);
+                }
+            }
+            gs.mapDirty = true;
+            out.push_back("Set " + gs.controlledCountry + " ideology to " + country->ideologyName + ".");
+        });
 }
 
 void GameScreen::enter(App& app) {
