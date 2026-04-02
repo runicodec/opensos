@@ -3,6 +3,8 @@
 #include "map/map_manager.h"
 #include "map/map_renderer.h"
 #include "ui/click_registry.h"
+#include "dev/command_registry.h"
+#include "dev/dev_console.h"
 
 class UIManager;
 class Sidebar;
@@ -64,6 +66,9 @@ private:
     std::unique_ptr<UIManager> uiManager_;
     std::unique_ptr<Sidebar> sidebar_;
 
+    CommandRegistry cmdRegistry_;
+    std::unique_ptr<DevConsole> devConsole_;
+
 
     SDL_Rect speedMinusRect_ = {0,0,0,0};
     SDL_Rect speedPlusRect_ = {0,0,0,0};
@@ -88,6 +93,8 @@ private:
     void renderUI(App& app);
     void renderPopups(App& app);
 
+
+    void registerCommands(App& app);
 
     void showTutorialPopup(GameState& gs);
     void showStartPopup(GameState& gs);

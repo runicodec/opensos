@@ -31,7 +31,8 @@
 
 GameScreen::GameScreen()
     : uiManager_(std::make_unique<UIManager>()),
-      sidebar_(std::make_unique<Sidebar>()) {
+      sidebar_(std::make_unique<Sidebar>()),
+      devConsole_(std::make_unique<DevConsole>(&cmdRegistry_)) {
 }
 
 GameScreen::~GameScreen() = default;
@@ -102,7 +103,255 @@ bool GameScreen::divisionInsideRect(const Division* div, const GameState& gs, in
 }
 
 
+void GameScreen::registerCommands(App& app) {
+    App* appPtr = &app;
+
+    cmdRegistry_.registerCommand("help",
+        [](const ConsoleCmd&, std::vector<std::string>& out) {
+            out.push_back("--- Commands ---");
+            out.push_back("help");
+            out.push_back("echo <text>");
+            out.push_back("money <amount>");
+            out.push_back("pp <amount>");
+            out.push_back("resource <oil|steel|aluminum|tungsten|chromium|rubber> <amount>");
+            out.push_back("spawn [amount]");
+            out.push_back("tag <country_name>");
+            out.push_back("ideology <communist|nationalist|liberal|monarchist|nonaligned>");
+            out.push_back("civilwar <communist|nationalist|liberal|monarchist|nonaligned>");
+        });
+
+    cmdRegistry_.registerCommand("echo",
+        [](const ConsoleCmd& cmd, std::vector<std::string>& out) {
+            std::string result;
+            for (size_t i = 1; i < cmd.argv.size(); ++i) {
+                if (i > 1) result += ' ';
+                result += cmd.argv[i];
+            }
+            out.push_back(result);
+        });
+
+    cmdRegistry_.registerCommand("money",
+        [appPtr](const ConsoleCmd& cmd, std::vector<std::string>& out) {
+            if (cmd.argv.size() < 2) {
+                out.push_back("Usage: money <amount>");
+                return;
+            }
+            float amount;
+            try {
+                amount = std::stof(cmd.argv[1]);
+            } catch (...) {
+                out.push_back("Invalid amount: " + cmd.argv[1]);
+                return;
+            }
+            auto& gs = appPtr->gameState();
+            Country* country = gs.getCountry(gs.controlledCountry);
+            if (!country) {
+                out.push_back("No controlled country.");
+                return;
+            }
+            country->money += amount;
+            out.push_back("Gave " + cmd.argv[1] + " money to " + gs.controlledCountry + ".");
+        });
+
+    cmdRegistry_.registerCommand("pp",
+        [appPtr](const ConsoleCmd& cmd, std::vector<std::string>& out) {
+            if (cmd.argv.size() < 2) {
+                out.push_back("Usage: pp <amount>");
+                return;
+            }
+            float amount;
+            try {
+                amount = std::stof(cmd.argv[1]);
+            } catch (...) {
+                out.push_back("Invalid amount: " + cmd.argv[1]);
+                return;
+            }
+            auto& gs = appPtr->gameState();
+            Country* country = gs.getCountry(gs.controlledCountry);
+            if (!country) {
+                out.push_back("No controlled country.");
+                return;
+            }
+            country->politicalPower += amount;
+            out.push_back("Gave " + cmd.argv[1] + " PP to " + gs.controlledCountry + ".");
+        });
+
+    cmdRegistry_.registerCommand("tag",
+        [appPtr, this](const ConsoleCmd& cmd, std::vector<std::string>& out) {
+            if (cmd.argv.size() < 2) {
+                out.push_back("Usage: tag <country name>");
+                return;
+            }
+            // Rejoin args with underscores: internal names use "United_States" not "United States".
+            std::string target;
+            for (size_t i = 1; i < cmd.argv.size(); ++i) {
+                if (i > 1) target += '_';
+                target += cmd.argv[i];
+            }
+            auto& gs = appPtr->gameState();
+            if (!gs.getCountry(target)) {
+                out.push_back("Unknown country: " + target);
+                return;
+            }
+            takeControlOfCountry(*appPtr, target);
+            out.push_back("Now playing as " + target + ".");
+        });
+
+    cmdRegistry_.registerCommand("spawn",
+        [appPtr](const ConsoleCmd& cmd, std::vector<std::string>& out) {
+            int amount = 1;
+            if (cmd.argv.size() >= 2) {
+                try {
+                    amount = std::stoi(cmd.argv[1]);
+                } catch (...) {
+                    out.push_back("Invalid amount: " + cmd.argv[1]);
+                    return;
+                }
+            }
+            if (amount < 1) { out.push_back("Amount must be >= 1."); return; }
+            auto& gs = appPtr->gameState();
+            Country* country = gs.getCountry(gs.controlledCountry);
+            if (!country) { out.push_back("No controlled country."); return; }
+            country->addDivision(gs, amount, -1, true, true);
+            out.push_back("Spawned " + std::to_string(amount) + "-stack division for " + gs.controlledCountry + ".");
+        });
+
+    cmdRegistry_.registerCommand("resource",
+        [appPtr](const ConsoleCmd& cmd, std::vector<std::string>& out) {
+            if (cmd.argv.size() < 3) {
+                out.push_back("Usage: resource <oil|steel|aluminum|tungsten|chromium|rubber> <amount>");
+                return;
+            }
+            std::string resName = cmd.argv[1];
+            // Validate resource name before calling resourceFromString (it silently defaults to Oil).
+            static const std::vector<std::string> valid = {"oil","steel","aluminum","tungsten","chromium","rubber"};
+            if (std::find(valid.begin(), valid.end(), resName) == valid.end()) {
+                out.push_back("Unknown resource: " + resName);
+                out.push_back("Valid: oil, steel, aluminum, tungsten, chromium, rubber");
+                return;
+            }
+            float amount;
+            try {
+                amount = std::stof(cmd.argv[2]);
+            } catch (...) {
+                out.push_back("Invalid amount: " + cmd.argv[2]);
+                return;
+            }
+            auto& gs = appPtr->gameState();
+            Country* country = gs.getCountry(gs.controlledCountry);
+            if (!country) { out.push_back("No controlled country."); return; }
+            auto& rm = country->resourceManager;
+            int idx = static_cast<int>(resourceFromString(resName));
+            rm.stockpile[idx] = std::min(rm.stockpile[idx] + amount, rm.maxStockpile);
+            out.push_back("Added " + cmd.argv[2] + " " + resName + " to " + gs.controlledCountry + ".");
+        });
+
+    cmdRegistry_.registerCommand("ideology",
+        [appPtr](const ConsoleCmd& cmd, std::vector<std::string>& out) {
+            if (cmd.argv.size() < 2) {
+                out.push_back("Usage: ideology <communist|nationalist|liberal|monarchist|nonaligned>");
+                return;
+            }
+            const std::string& ideologyArg = cmd.argv[1];
+            float economic = 0.0f, social = 0.0f;
+            if      (ideologyArg == "communist")   { economic = -1.0f; social = -1.0f; }
+            else if (ideologyArg == "nationalist") { economic =  1.0f; social = -1.0f; }
+            else if (ideologyArg == "liberal")     { economic = -1.0f; social =  1.0f; }
+            else if (ideologyArg == "monarchist")  { economic =  1.0f; social =  1.0f; }
+            else if (ideologyArg == "nonaligned")  { economic =  0.0f; social =  0.0f; }
+            else {
+                out.push_back("Unknown ideology: " + ideologyArg);
+                out.push_back("Valid: communist, nationalist, liberal, monarchist, nonaligned");
+                return;
+            }
+            auto& gs = appPtr->gameState();
+            Country* country = gs.getCountry(gs.controlledCountry);
+            if (!country) {
+                out.push_back("No controlled country.");
+                return;
+            }
+
+            // Save pre-change state needed for faction ejection and map repaint.
+            std::string oldName   = gs.controlledCountry;
+            std::string oldFaction = country->faction;
+
+            // Attempt a full identity change (name + color + divisions) via revolution
+            // if a distinct country exists in the data for this culture + ideology.
+            auto& cd = CountryData::instance();
+            std::string newName = cd.getCountryType(country->culture, ideologyArg);
+            bool didRevolution = !newName.empty()
+                                 && newName != oldName
+                                 && !gs.getCountry(newName);
+            if (didRevolution) {
+                country->revolution(ideologyArg, gs);
+                // Remove the zombie old country fully: kill() cleans up countryList/faction,
+                // then erase from gs.countries so it can't be found by getCountry() anymore.
+                country->kill(gs);
+                gs.countries.erase(oldName);
+                // country ptr is now dangling — do not use it again.
+            } else {
+                country->setIdeology({economic, social});
+            }
+
+            // Repaint political + ideology surfaces (revolution also skips map paint).
+            std::string currentName = gs.controlledCountry;
+            Country* current = gs.getCountry(currentName);
+            if (current && gs.politicalMapSurf && gs.regionsMapSurf) {
+                auto& rd = RegionData::instance();
+                Color ideColor = Helpers::getIdeologyColor(current->ideology[0], current->ideology[1]);
+                for (int id : current->regions) {
+                    Vec2 loc = rd.getLocation(id);
+                    MapFunc::fillRegionMask(gs.politicalMapSurf, gs.regionsMapSurf, id, loc.x, loc.y, current->color);
+                    if (gs.ideologyMapSurf)
+                        MapFunc::fillRegionMask(gs.ideologyMapSurf, gs.regionsMapSurf, id, loc.x, loc.y, ideColor);
+                }
+            }
+            gs.mapDirty = true;
+
+            // For non-revolution ideology changes, eject from faction if ideology diverges.
+            // The revolution path already handles this via kill() above.
+            if (!didRevolution && !oldFaction.empty()) {
+                Faction* fac = gs.getFaction(oldFaction);
+                std::string newIdeology = current ? current->ideologyName : ideologyArg;
+                if (fac && fac->ideology != newIdeology) {
+                    fac->removeCountry(currentName, gs);
+                    out.push_back("Ejected from " + oldFaction + " (ideology divergence).");
+                }
+            }
+
+            out.push_back("Changed to " + currentName + " (" + (current ? current->ideologyName : ideologyArg) + ").");
+        });
+
+    cmdRegistry_.registerCommand("civilwar",
+        [appPtr](const ConsoleCmd& cmd, std::vector<std::string>& out) {
+            if (cmd.argv.size() < 2) {
+                out.push_back("Usage: civilwar <communist|nationalist|liberal|monarchist|nonaligned>");
+                return;
+            }
+            auto& gs = appPtr->gameState();
+            Country* country = gs.getCountry(gs.controlledCountry);
+            if (!country) {
+                out.push_back("No controlled country.");
+                return;
+            }
+            const std::string& ideology = cmd.argv[1];
+            auto& cd = CountryData::instance();
+            std::string rebelName = cd.getCountryType(country->culture, ideology);
+            if (rebelName.empty()) {
+                out.push_back("No " + ideology + " faction defined for culture: " + country->culture);
+                return;
+            }
+            if (gs.getCountry(rebelName)) {
+                out.push_back(rebelName + " already exists.");
+                return;
+            }
+            country->civilWar(rebelName, gs);
+            out.push_back("Civil war started: " + gs.controlledCountry + " vs " + rebelName + ".");
+        });
+}
+
 void GameScreen::enter(App& app) {
+    registerCommands(app);
     auto& gs = app.gameState();
     if (!gs.inGame) {
 
@@ -131,6 +380,9 @@ void GameScreen::handleInput(App& app, const InputState& input) {
     int W = eng.WIDTH;
     int H = eng.HEIGHT;
     if (sidebar_) sidebar_->leftSide = app.settings().sidebarLeft;
+
+    // Dev console intercepts all input when open; also handles the ~ toggle.
+    if (devConsole_->handleInput(input)) return;
 
     const bool popupWasOpen = !uiManager_->popupList.empty();
 
@@ -1369,6 +1621,8 @@ void GameScreen::render(App& app) {
 
 
     toasts().render(eng.renderer, W, H, eng.uiScale);
+
+    devConsole_->render(eng.renderer, W, H);
 }
 
 
@@ -2315,4 +2569,6 @@ void GameScreen::resetSessionState() {
 
     uiManager_ = std::make_unique<UIManager>();
     sidebar_ = std::make_unique<Sidebar>();
+
+    devConsole_->forceClose();
 }

@@ -1385,6 +1385,20 @@ void Country::civilWar(const std::string& countryName, GameState& gs, bool popup
     rebel->spawnDivisions(gs);
     gs.registerCountry(countryName, std::move(rebel));
 
+    // The Country constructor adds regions with ignoreFill=true (skipping map paint)
+    // so the rebel's regions still show the loyalist's color. Repaint them now.
+    Country* rebelPtr = gs.getCountry(countryName);
+    if (rebelPtr && gs.politicalMapSurf && gs.regionsMapSurf) {
+        Color ideColor = Helpers::getIdeologyColor(rebelPtr->ideology[0], rebelPtr->ideology[1]);
+        for (int id : rebelPtr->regions) {
+            Vec2 loc = rd.getLocation(id);
+            MapFunc::fillRegionMask(gs.politicalMapSurf, gs.regionsMapSurf, id, loc.x, loc.y, rebelPtr->color);
+            if (gs.ideologyMapSurf) {
+                MapFunc::fillRegionMask(gs.ideologyMapSurf, gs.regionsMapSurf, id, loc.x, loc.y, ideColor);
+            }
+        }
+        gs.mapDirty = true;
+    }
 
     declareWar(countryName, gs, true, popup);
 }
@@ -1427,7 +1441,10 @@ void Country::revolution(const std::string& ideology, GameState& gs) {
         newCountry->puppetTo = puppetTo;
 
 
-        newCountry->addRegions(regions, gs, true, false);
+        // Copy before iterating: addRegion removes regions from this->regions
+        // via removeRegion(), causing iterator invalidation if passed by reference.
+        const std::vector<int> regionsCopy = regions;
+        newCountry->addRegions(regionsCopy, gs, true, false);
 
 
         for (auto& div : divisions) {
@@ -1446,8 +1463,16 @@ void Country::revolution(const std::string& ideology, GameState& gs) {
             gs.controlledCountry = newCountryName;
         }
 
-        gs.countries[newCountryName] = std::move(newCountry);
+        gs.registerCountry(newCountryName, std::move(newCountry));
 
+        // Reload division sprites now that div->country points to the new name,
+        // so flags and colors reflect the new country rather than the old one.
+        Country* nc = gs.getCountry(newCountryName);
+        if (nc) {
+            for (auto& div : nc->divisions) {
+                div->reloadSprite(gs);
+            }
+        }
 
         atWarWith.clear();
         regions.clear();
