@@ -31,7 +31,18 @@
 
 GameScreen::GameScreen()
     : uiManager_(std::make_unique<UIManager>()),
-      sidebar_(std::make_unique<Sidebar>()) {
+      sidebar_(std::make_unique<Sidebar>()),
+      devConsole_(std::make_unique<DevConsole>(&cmdRegistry_)) {
+
+    cmdRegistry_.registerCommand("echo",
+        [](const ConsoleCmd& cmd, std::vector<std::string>& out) {
+            std::string result;
+            for (size_t i = 1; i < cmd.argv.size(); ++i) {
+                if (i > 1) result += ' ';
+                result += cmd.argv[i];
+            }
+            out.push_back(result);
+        });
 }
 
 GameScreen::~GameScreen() = default;
@@ -131,6 +142,9 @@ void GameScreen::handleInput(App& app, const InputState& input) {
     int W = eng.WIDTH;
     int H = eng.HEIGHT;
     if (sidebar_) sidebar_->leftSide = app.settings().sidebarLeft;
+
+    // Dev console intercepts all input when open; also handles the ~ toggle.
+    if (devConsole_->handleInput(input)) return;
 
     const bool popupWasOpen = !uiManager_->popupList.empty();
 
@@ -1369,6 +1383,8 @@ void GameScreen::render(App& app) {
 
 
     toasts().render(eng.renderer, W, H, eng.uiScale);
+
+    devConsole_->render(eng.renderer, W, H);
 }
 
 
@@ -2315,4 +2331,6 @@ void GameScreen::resetSessionState() {
 
     uiManager_ = std::make_unique<UIManager>();
     sidebar_ = std::make_unique<Sidebar>();
+
+    devConsole_->forceClose();
 }
