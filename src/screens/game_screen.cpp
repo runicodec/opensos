@@ -162,6 +162,27 @@ void GameScreen::registerCommands(App& app) {
             out.push_back("Gave " + cmd.argv[1] + " PP to " + gs.controlledCountry + ".");
         });
 
+    cmdRegistry_.registerCommand("tag",
+        [appPtr, this](const ConsoleCmd& cmd, std::vector<std::string>& out) {
+            if (cmd.argv.size() < 2) {
+                out.push_back("Usage: tag <country name>");
+                return;
+            }
+            // Rejoin args with underscores: internal names use "United_States" not "United States".
+            std::string target;
+            for (size_t i = 1; i < cmd.argv.size(); ++i) {
+                if (i > 1) target += '_';
+                target += cmd.argv[i];
+            }
+            auto& gs = appPtr->gameState();
+            if (!gs.getCountry(target)) {
+                out.push_back("Unknown country: " + target);
+                return;
+            }
+            takeControlOfCountry(*appPtr, target);
+            out.push_back("Now playing as " + target + ".");
+        });
+
     cmdRegistry_.registerCommand("ideology",
         [appPtr](const ConsoleCmd& cmd, std::vector<std::string>& out) {
             if (cmd.argv.size() < 2) {
