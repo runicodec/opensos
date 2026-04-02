@@ -284,9 +284,14 @@ void Country::update(GameState& gs) {
     electionSystem.update(gs, name);
 
 
-    if (!capitulated && !atWarWith.empty() &&
-        (regions.empty() || divisions.empty() || cities.empty()) &&
-        regions.size() < regionsBeforeWar.size()) {
+    bool lostTerritory = regions.size() < regionsBeforeWar.size();
+    bool noArmy        = divisions.empty();
+    bool noCities      = cities.empty();
+    bool shouldCapitulate = regions.empty()
+        || (noArmy   && lostTerritory)
+        || (noCities && lostTerritory)
+        || (noCities && noArmy);
+    if (!capitulated && !atWarWith.empty() && shouldCapitulate) {
         capitulated = true;
 
         for (size_t i = 0; i < divisions.size(); ) {
