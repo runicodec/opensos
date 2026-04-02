@@ -18,6 +18,7 @@ void DevConsole::close() {
     SDL_StopTextInput();
     inputBuffer_.clear();
     historyIndex_ = -1;
+    cursorPos_ = 0;
 }
 
 void DevConsole::forceClose() {
@@ -45,14 +46,26 @@ bool DevConsole::handleInput(const InputState& input) {
         const bool graveThisFrame = input.isKeyDown(SDL_SCANCODE_GRAVE);
         for (char c : input.textInput) {
             if (graveThisFrame && (c == '`' || c == '~')) continue;
-            inputBuffer_ += c;
+            inputBuffer_.insert(inputBuffer_.begin() + cursorPos_, c);
+            cursorPos_++;
         }
     }
 
-    // Backspace deletes one character.
-    if (input.isKeyDown(SDL_SCANCODE_BACKSPACE) && !inputBuffer_.empty()) {
-        inputBuffer_.pop_back();
+    // Backspace deletes the character to the left of the cursor.
+    if (input.isKeyDown(SDL_SCANCODE_BACKSPACE) && cursorPos_ > 0) {
+        inputBuffer_.erase(cursorPos_ - 1, 1);
+        cursorPos_--;
         historyIndex_ = -1;
+    }
+
+    // Left/right arrow keys move the cursor.
+    if (input.isKeyDown(SDL_SCANCODE_LEFT) && cursorPos_ > 0) {
+        cursorPos_--;
+        return true;
+    }
+    if (input.isKeyDown(SDL_SCANCODE_RIGHT) && cursorPos_ < static_cast<int>(inputBuffer_.size())) {
+        cursorPos_++;
+        return true;
     }
 
     // Enter submits the current input.
@@ -69,6 +82,7 @@ bool DevConsole::handleInput(const InputState& input) {
             else if (historyIndex_ > 0)
                 historyIndex_--;
             inputBuffer_ = inputHistory_[historyIndex_];
+            cursorPos_ = static_cast<int>(inputBuffer_.size());
         }
         return true;
     }
@@ -83,6 +97,7 @@ bool DevConsole::handleInput(const InputState& input) {
             } else {
                 inputBuffer_ = inputHistory_[historyIndex_];
             }
+            cursorPos_ = static_cast<int>(inputBuffer_.size());
         }
         return true;
     }
@@ -123,6 +138,7 @@ void DevConsole::submit() {
     inputBuffer_.clear();
     historyIndex_ = -1;
     scrollOffset_ = 0;
+    cursorPos_ = 0;
 }
 
 void DevConsole::render(SDL_Renderer* r, int screenW, int screenH) {
@@ -178,9 +194,10 @@ void DevConsole::render(SDL_Renderer* r, int screenW, int screenH) {
     UIPrim::drawText(r, promptedText, inputFontSize,
                      padX, inputTextY, "topleft", Theme::gold_bright);
 
-    // Blinking cursor.
+    // Blinking cursor — positioned after the text up to cursorPos_.
     if ((SDL_GetTicks() % 1000) < 500) {
-        const int textW   = UIPrim::textWidth(promptedText, inputFontSize);
+        const std::string beforeCursor = "> " + inputBuffer_.substr(0, cursorPos_);
+        const int textW   = UIPrim::textWidth(beforeCursor, inputFontSize);
         const float curX  = padX + static_cast<float>(textW);
         SDL_SetRenderDrawColor(r,
             Theme::gold_bright.r, Theme::gold_bright.g, Theme::gold_bright.b, 255);

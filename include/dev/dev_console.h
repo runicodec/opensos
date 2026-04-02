@@ -32,6 +32,7 @@ private:
     std::vector<std::string> inputHistory_;   // submitted commands for up/down nav
     int historyIndex_ = -1;                   // -1 means not navigating history
     int scrollOffset_ = 0;                    // lines scrolled up from bottom
+    int cursorPos_   = 0;                     // insertion point within inputBuffer_
 
     static constexpr int kMaxOutput  = 200;
     static constexpr int kMaxHistory = 50;
