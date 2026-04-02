@@ -202,6 +202,36 @@ void GameScreen::registerCommands(App& app) {
             out.push_back("Spawned " + std::to_string(amount) + "-stack division for " + gs.controlledCountry + ".");
         });
 
+    cmdRegistry_.registerCommand("resource",
+        [appPtr](const ConsoleCmd& cmd, std::vector<std::string>& out) {
+            if (cmd.argv.size() < 3) {
+                out.push_back("Usage: resource <oil|steel|aluminum|tungsten|chromium|rubber> <amount>");
+                return;
+            }
+            std::string resName = cmd.argv[1];
+            // Validate resource name before calling resourceFromString (it silently defaults to Oil).
+            static const std::vector<std::string> valid = {"oil","steel","aluminum","tungsten","chromium","rubber"};
+            if (std::find(valid.begin(), valid.end(), resName) == valid.end()) {
+                out.push_back("Unknown resource: " + resName);
+                out.push_back("Valid: oil, steel, aluminum, tungsten, chromium, rubber");
+                return;
+            }
+            float amount;
+            try {
+                amount = std::stof(cmd.argv[2]);
+            } catch (...) {
+                out.push_back("Invalid amount: " + cmd.argv[2]);
+                return;
+            }
+            auto& gs = appPtr->gameState();
+            Country* country = gs.getCountry(gs.controlledCountry);
+            if (!country) { out.push_back("No controlled country."); return; }
+            auto& rm = country->resourceManager;
+            int idx = static_cast<int>(resourceFromString(resName));
+            rm.stockpile[idx] = std::min(rm.stockpile[idx] + amount, rm.maxStockpile);
+            out.push_back("Added " + cmd.argv[2] + " " + resName + " to " + gs.controlledCountry + ".");
+        });
+
     cmdRegistry_.registerCommand("ideology",
         [appPtr](const ConsoleCmd& cmd, std::vector<std::string>& out) {
             if (cmd.argv.size() < 2) {
