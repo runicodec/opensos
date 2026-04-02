@@ -103,7 +103,18 @@ void Battle::update(GameState& gs) {
     float tick = gs.speed / 25.0f;
 
 
-    float atkDamage = attacker->units * aAtk * atkBiome * pierceMult * COMBAT_SCALE * tick;
+    // Accumulate attack from any reinforcing divisions on the attacker's side.
+    float reinforcerAtkDamage = 0.0f;
+    for (auto* r : reinforcers) {
+        if (!r) continue;
+        auto* rCountry = gs.getCountry(r->country);
+        float rAtk = r->combatStats.attack * (rCountry ? rCountry->attackMultiplier : 1.0f);
+        float rPierce = (r->combatStats.piercing >= defender->combatStats.armor) ? 1.0f : 0.5f;
+        reinforcerAtkDamage += r->units * rAtk * atkBiome * rPierce * COMBAT_SCALE * tick;
+    }
+
+    float atkDamage = attacker->units * aAtk * atkBiome * pierceMult * COMBAT_SCALE * tick
+                      + reinforcerAtkDamage;
     float defDamage = defender->units * dDef * defBiome * defPierceMult * frontPenalty * COMBAT_SCALE * tick;
 
 
@@ -153,6 +164,15 @@ void Battle::update(GameState& gs) {
         d->recovering = true;
         a->commands.clear();
         d->commands.clear();
+
+        for (auto* r : reinforcers) {
+            if (!r) continue;
+            r->fighting = false;
+            r->locked = false;
+            r->recovering = true;
+            r->commands.clear();
+        }
+        reinforcers.clear();
 
 
         a->reloadSprite(gs, a->color);
