@@ -14,6 +14,9 @@ struct Battle {
     SDL_Texture* image = nullptr;
     int imageW = 0, imageH = 0;
 
+    // Additional friendly divisions that have joined the attack mid-battle.
+    // They contribute their attack power each tick but don't take damage directly.
+    std::vector<Division*> reinforcers;
 
     std::array<float, 4> attackerBiome = {1, 1, 1, 1};
     std::array<float, 4> defenderBiome = {1, 1, 1, 1};

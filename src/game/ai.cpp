@@ -320,13 +320,17 @@ void AIController::manageDivisions(GameState& gs) {
     Country* country = getCountry(gs);
     if (!country) return;
 
-    if (rebalanceIdleStacks(country, gs)) return;
+    // Don't early-return here — that would prevent microDivision from running
+    // on any division whenever a merge/split happens, which occurs constantly.
+    rebalanceIdleStacks(country, gs);
 
     for (auto& div : country->divisions) {
         if (!div) continue;
         if (div->fighting || div->locked) continue;
         if (!div->commands.empty()) continue;
-        if (recentlyOrdered(div.get(), gs, 12)) continue;
+        // Reduced from 12 h: a division that just arrived at the frontline should
+        // be able to receive attack orders within a few hours, not half a day.
+        if (recentlyOrdered(div.get(), gs, 3)) continue;
 
         microDivision(div.get(), gs);
     }
@@ -381,6 +385,19 @@ void AIController::assignFrontline(GameState& gs) {
 
         bool assignedToFront = containsRegion(country->battleBorder, assignedRegion);
         if (!assignedToFront) {
+            // If the division is actively moving toward an enemy province (attack
+            // order from microDivision), don't pull it off mid-advance. Previously,
+            // assignFrontline would treat any division whose aiObjectiveRegion is
+            // not on battleBorder as "unassigned" and redirect it — cancelling
+            // every attack within 4 hours and causing the AI to forget its attackers.
+            if (!div->commands.empty() && div->aiObjectiveRegion >= 0) {
+                auto& rd = RegionData::instance();
+                std::string objOwner = rd.getOwner(div->aiObjectiveRegion);
+                bool activeAttack = !objOwner.empty() &&
+                    std::find(country->atWarWith.begin(), country->atWarWith.end(), objOwner)
+                        != country->atWarWith.end();
+                if (activeAttack) continue;
+            }
             available.push_back(div.get());
             continue;
         }
@@ -417,6 +434,17 @@ void AIController::assignFrontline(GameState& gs) {
             available.erase(bestIt);
             need.committed += stack;
             committedByRegion[need.region] += stack;
+        }
+    }
+
+    // Any units still available after all needs are met are idle in rear provinces.
+    // Send them toward the highest-priority front so they reinforce rather than sit.
+    if (!available.empty() && !needs.empty()) {
+        const FrontNeed& topNeed = needs.front();
+        for (Division* div : available) {
+            if (div->region != topNeed.region) {
+                issueAiOrder(div, topNeed.region, gs, true, true, 100);
+            }
         }
     }
 }
@@ -502,12 +530,54 @@ void AIController::microDivision(Division* div, GameState& gs) {
     }
 
     if (!atWar) return;
-    if (!containsRegion(country->battleBorder, div->region)) return;
-    if (shouldHoldCurrentFront(gs, country, div)) return;
-    if (div->maxUnits > 0 && div->units / div->maxUnits < 0.6f) return;
-    if (div->maxResources > 0 && div->resources / div->maxResources < 0.45f) return;
+
+    // Small random chance to probe — lets the AI break out of stalemates by
+    // attempting a suboptimal move instead of waiting for perfect conditions.
+    // Uses looser health/supply thresholds and will try any adjacent enemy
+    // province if findBestTarget finds nothing ideal.
+    bool probe = randFloat(0.0f, 1.0f) < 0.30f;
+
+    if (!probe) {
+        if (!containsRegion(country->battleBorder, div->region)) return;
+        if (shouldHoldCurrentFront(gs, country, div)) return;
+        if (div->maxUnits > 0 && div->units / div->maxUnits < 0.6f) return;
+        if (div->maxResources > 0 && div->resources / div->maxResources < 0.45f) return;
+    } else {
+        // Hard floor — don't send near-dead or completely dry units
+        if (div->maxUnits > 0 && div->units / div->maxUnits < 0.35f) return;
+        if (div->maxResources > 0 && div->resources / div->maxResources < 0.25f) return;
+    }
 
     int target = findBestTarget(div, gs);
+
+    if (target < 0 && probe) {
+        auto& rd = RegionData::instance();
+        // First try a long-range strategic push directly to an enemy capital.
+        // The pathfinder routes through enemy territory and division.update()
+        // triggers battles at each step, so this creates a genuine capital drive.
+        for (const auto& enemyName : country->atWarWith) {
+            Country* ec = gs.getCountry(enemyName);
+            if (!ec || ec->capital.empty()) continue;
+            int capRegion = rd.getCityRegion(ec->capital);
+            if (capRegion >= 0 && capRegion != div->region) {
+                target = capRegion;
+                break;
+            }
+        }
+        // Fallback: pressure any adjacent enemy province
+        if (target < 0) {
+            for (int rid : rd.getConnections(div->region)) {
+                std::string owner = rd.getOwner(rid);
+                if (!owner.empty() &&
+                    std::find(country->atWarWith.begin(), country->atWarWith.end(), owner)
+                        != country->atWarWith.end()) {
+                    target = rid;
+                    break;
+                }
+            }
+        }
+    }
+
     if (target >= 0) {
         issueAiOrder(div, target, gs, false, true, 200);
     }
@@ -540,8 +610,12 @@ int AIController::findBestTarget(Division* div, GameState& gs) const {
         bool capital = isCapitalRegion(enemyCountry, rid);
         bool city = isStrategicCity(rid);
 
-        if (friendlySupport <= 0) continue;
-        if (currentFrontPressure > friendlySupport) continue;
+        // Include the attacking division itself when checking if there is enough
+        // strength to push. Previously the guard required *other* friendly stacks
+        // adjacent to the target (friendlySupport), which meant a division alone on
+        // a stretch of border could never attack even when it was perfectly capable.
+        int totalAttackerStrength = friendlySupport + div->divisionStack;
+        if (currentFrontPressure > totalAttackerStrength) continue;
         float effectiveFriendly = (friendlySupport + div->divisionStack) * (0.65f + healthRatio * 0.35f) * (0.6f + supplyRatio * 0.4f);
         float effectiveEnemy = enemyStrength + targetPressure * 0.35f;
         if (enemyStrength > 0 && effectiveFriendly < effectiveEnemy) continue;
@@ -551,6 +625,21 @@ int AIController::findBestTarget(Division* div, GameState& gs) const {
         else if (city) score += 14.0f;
         if (enemyCountry && enemyCountry->regions.size() <= 4) score += 8.0f;
         if (enemyStrength == 0) score += 6.0f;
+
+        // Directional bonus: reward moves that advance toward an enemy capital.
+        // Without this the AI grabs whatever border province scores highest locally
+        // and never develops a coherent push in any strategic direction.
+        for (const auto& enemyName : country->atWarWith) {
+            Country* ec = gs.getCountry(enemyName);
+            if (!ec || ec->capital.empty()) continue;
+            int capRegion = rd.getCityRegion(ec->capital);
+            if (capRegion < 0) continue;
+            float currentDist = regionDistanceScore(div->region, capRegion);
+            float targetDist  = regionDistanceScore(rid, capRegion);
+            if (targetDist < currentDist && currentDist > 0.0f) {
+                score += 10.0f * (1.0f - targetDist / currentDist);
+            }
+        }
 
         if (score > bestScore) {
             bestScore = score;
@@ -792,6 +881,10 @@ void AIController::manageBuildQueue(GameState& gs) {
     Country* country = getCountry(gs);
     if (!country) return;
 
+    // During war, pause new construction when funds are tight so money goes
+    // toward keeping divisions supplied rather than long building projects.
+    if (atWar && country->money < 30000.0f) return;
+
     auto& bm = country->buildingManager;
 
 
@@ -865,7 +958,10 @@ void AIController::manageTrade(GameState& gs) {
         }
     }
 
-    if (country->money < 10000.0f) return;
+    // During war a country may be cash-strapped but still desperately need
+    // resources — lower the gate so it can still seek trades.
+    float tradeMoneyGate = atWar ? 2000.0f : 10000.0f;
+    if (country->money < tradeMoneyGate) return;
 
     for (int ri = 0; ri < RESOURCE_COUNT; ++ri) {
         Resource res = static_cast<Resource>(ri);

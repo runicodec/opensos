@@ -244,6 +244,30 @@ void Division::update(GameState& gs) {
                             aiObjectiveRegion = -1;
                             trackedCommandRegion = -1;
                             trackedCommandOwner.clear();
+                        } else if (enemyDiv->fighting && !fighting && resources >= maxResources * 0.5f) {
+                            // Enemy is already being attacked — join that battle as a reinforcer
+                            // so multiple friendly divisions can bring down a stronger unit together.
+                            for (auto& battle : gs.battles) {
+                                if (!battle || battle->finished || battle->defender != enemyDiv) continue;
+                                if (!battle->attacker) continue;
+                                // Confirm the existing attacker is on our side
+                                if (atWarSet.count(battle->attacker->country)) continue;
+                                battle->reinforcers.push_back(this);
+                                fighting = true;
+                                commands.clear();
+                                aiObjectiveRegion = -1;
+                                trackedCommandRegion = -1;
+                                trackedCommandOwner.clear();
+                                break;
+                            }
+                        } else if (!fighting && !enemyDiv->fighting) {
+                            // Blocked by an enemy but unable to engage (low resources).
+                            // Clear commands so the AI can re-evaluate and order a retreat
+                            // rather than leaving the division permanently stuck.
+                            commands.clear();
+                            aiObjectiveRegion = -1;
+                            trackedCommandRegion = -1;
+                            trackedCommandOwner.clear();
                         }
                         break;
                     }
@@ -309,6 +333,12 @@ void Division::update(GameState& gs) {
         resources += gs.speed / 5.0f * divisionStack / 2.0f;
         myCountry->money -= gs.speed / 5.0f * divisionStack / 2.0f * resourceUse * 2.5f;
         resources = std::clamp(resources, maxResources / 2.0f, maxResources);
+    }
+    // Clear recovering once resources are sufficiently replenished so the AI can
+    // issue new orders. Without this, divisions that finish a battle are stuck in
+    // "recovering" for the entire war and the AI never attacks again.
+    if (recovering && !fighting && resources >= maxResources * 0.8f) {
+        recovering = false;
     }
 
     updateLocation(gs);
@@ -438,6 +468,10 @@ void Division::command(int targetRegion, GameState& gs, bool ignoreEnemy, bool i
 void Division::kill(GameState& gs) {
     for (auto& battle : gs.battles) {
         if (!battle) continue;
+
+        // Remove from reinforcer list if present
+        auto& rvec = battle->reinforcers;
+        rvec.erase(std::remove(rvec.begin(), rvec.end(), this), rvec.end());
 
         bool involvesThisDivision = (battle->attacker == this || battle->defender == this);
         if (!involvesThisDivision) continue;
