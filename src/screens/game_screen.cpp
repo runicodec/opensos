@@ -139,6 +139,29 @@ void GameScreen::registerCommands(App& app) {
             out.push_back("Gave " + cmd.argv[1] + " money to " + gs.controlledCountry + ".");
         });
 
+    cmdRegistry_.registerCommand("pp",
+        [appPtr](const ConsoleCmd& cmd, std::vector<std::string>& out) {
+            if (cmd.argv.size() < 2) {
+                out.push_back("Usage: pp <amount>");
+                return;
+            }
+            float amount;
+            try {
+                amount = std::stof(cmd.argv[1]);
+            } catch (...) {
+                out.push_back("Invalid amount: " + cmd.argv[1]);
+                return;
+            }
+            auto& gs = appPtr->gameState();
+            Country* country = gs.getCountry(gs.controlledCountry);
+            if (!country) {
+                out.push_back("No controlled country.");
+                return;
+            }
+            country->politicalPower += amount;
+            out.push_back("Gave " + cmd.argv[1] + " PP to " + gs.controlledCountry + ".");
+        });
+
     cmdRegistry_.registerCommand("ideology",
         [appPtr](const ConsoleCmd& cmd, std::vector<std::string>& out) {
             if (cmd.argv.size() < 2) {
