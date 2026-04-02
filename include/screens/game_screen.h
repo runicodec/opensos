@@ -94,6 +94,8 @@ private:
     void renderPopups(App& app);
 
 
+    void registerCommands(App& app);
+
     void showTutorialPopup(GameState& gs);
     void showStartPopup(GameState& gs);
 };

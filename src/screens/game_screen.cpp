@@ -33,16 +33,6 @@ GameScreen::GameScreen()
     : uiManager_(std::make_unique<UIManager>()),
       sidebar_(std::make_unique<Sidebar>()),
       devConsole_(std::make_unique<DevConsole>(&cmdRegistry_)) {
-
-    cmdRegistry_.registerCommand("echo",
-        [](const ConsoleCmd& cmd, std::vector<std::string>& out) {
-            std::string result;
-            for (size_t i = 1; i < cmd.argv.size(); ++i) {
-                if (i > 1) result += ' ';
-                result += cmd.argv[i];
-            }
-            out.push_back(result);
-        });
 }
 
 GameScreen::~GameScreen() = default;
@@ -113,7 +103,45 @@ bool GameScreen::divisionInsideRect(const Division* div, const GameState& gs, in
 }
 
 
+void GameScreen::registerCommands(App& app) {
+    App* appPtr = &app;
+
+    cmdRegistry_.registerCommand("echo",
+        [](const ConsoleCmd& cmd, std::vector<std::string>& out) {
+            std::string result;
+            for (size_t i = 1; i < cmd.argv.size(); ++i) {
+                if (i > 1) result += ' ';
+                result += cmd.argv[i];
+            }
+            out.push_back(result);
+        });
+
+    cmdRegistry_.registerCommand("money",
+        [appPtr](const ConsoleCmd& cmd, std::vector<std::string>& out) {
+            if (cmd.argv.size() < 2) {
+                out.push_back("Usage: money <amount>");
+                return;
+            }
+            float amount;
+            try {
+                amount = std::stof(cmd.argv[1]);
+            } catch (...) {
+                out.push_back("Invalid amount: " + cmd.argv[1]);
+                return;
+            }
+            auto& gs = appPtr->gameState();
+            Country* country = gs.getCountry(gs.controlledCountry);
+            if (!country) {
+                out.push_back("No controlled country.");
+                return;
+            }
+            country->money += amount;
+            out.push_back("Gave " + cmd.argv[1] + " money to " + gs.controlledCountry + ".");
+        });
+}
+
 void GameScreen::enter(App& app) {
+    registerCommands(app);
     auto& gs = app.gameState();
     if (!gs.inGame) {
 
