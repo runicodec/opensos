@@ -177,7 +177,11 @@ void GameScreen::registerCommands(App& app) {
                                  && !gs.getCountry(newName);
             if (didRevolution) {
                 country->revolution(ideologyArg, gs);
-                // gs.controlledCountry is now newName; country ptr is stale.
+                // Remove the zombie old country fully: kill() cleans up countryList/faction,
+                // then erase from gs.countries so it can't be found by getCountry() anymore.
+                country->kill(gs);
+                gs.countries.erase(oldName);
+                // country ptr is now dangling — do not use it again.
             } else {
                 country->setIdeology({economic, social});
             }
@@ -197,13 +201,13 @@ void GameScreen::registerCommands(App& app) {
             }
             gs.mapDirty = true;
 
-            // Eject from faction if ideology now diverges from the faction's alignment.
-            // After a revolution the old name is still in the faction's member list.
-            if (!oldFaction.empty()) {
+            // For non-revolution ideology changes, eject from faction if ideology diverges.
+            // The revolution path already handles this via kill() above.
+            if (!didRevolution && !oldFaction.empty()) {
                 Faction* fac = gs.getFaction(oldFaction);
                 std::string newIdeology = current ? current->ideologyName : ideologyArg;
                 if (fac && fac->ideology != newIdeology) {
-                    fac->removeCountry(didRevolution ? oldName : currentName, gs);
+                    fac->removeCountry(currentName, gs);
                     out.push_back("Ejected from " + oldFaction + " (ideology divergence).");
                 }
             }

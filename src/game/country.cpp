@@ -1463,8 +1463,16 @@ void Country::revolution(const std::string& ideology, GameState& gs) {
             gs.controlledCountry = newCountryName;
         }
 
-        gs.countries[newCountryName] = std::move(newCountry);
+        gs.registerCountry(newCountryName, std::move(newCountry));
 
+        // Reload division sprites now that div->country points to the new name,
+        // so flags and colors reflect the new country rather than the old one.
+        Country* nc = gs.getCountry(newCountryName);
+        if (nc) {
+            for (auto& div : nc->divisions) {
+                div->reloadSprite(gs);
+            }
+        }
 
         atWarWith.clear();
         regions.clear();
