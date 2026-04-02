@@ -145,15 +145,15 @@ void GameScreen::registerCommands(App& app) {
                 out.push_back("Usage: ideology <communist|nationalist|liberal|monarchist|nonaligned>");
                 return;
             }
-            const std::string& name = cmd.argv[1];
+            const std::string& ideologyArg = cmd.argv[1];
             float economic = 0.0f, social = 0.0f;
-            if      (name == "communist")   { economic = -1.0f; social = -1.0f; }
-            else if (name == "nationalist") { economic =  1.0f; social = -1.0f; }
-            else if (name == "liberal")     { economic = -1.0f; social =  1.0f; }
-            else if (name == "monarchist")  { economic =  1.0f; social =  1.0f; }
-            else if (name == "nonaligned")  { economic =  0.0f; social =  0.0f; }
+            if      (ideologyArg == "communist")   { economic = -1.0f; social = -1.0f; }
+            else if (ideologyArg == "nationalist") { economic =  1.0f; social = -1.0f; }
+            else if (ideologyArg == "liberal")     { economic = -1.0f; social =  1.0f; }
+            else if (ideologyArg == "monarchist")  { economic =  1.0f; social =  1.0f; }
+            else if (ideologyArg == "nonaligned")  { economic =  0.0f; social =  0.0f; }
             else {
-                out.push_back("Unknown ideology: " + name);
+                out.push_back("Unknown ideology: " + ideologyArg);
                 out.push_back("Valid: communist, nationalist, liberal, monarchist, nonaligned");
                 return;
             }
@@ -163,17 +163,52 @@ void GameScreen::registerCommands(App& app) {
                 out.push_back("No controlled country.");
                 return;
             }
-            country->setIdeology({economic, social});
-            if (gs.ideologyMapSurf && gs.regionsMapSurf) {
-                Color ideColor = Helpers::getIdeologyColor(economic, social);
+
+            // Save pre-change state needed for faction ejection and map repaint.
+            std::string oldName   = gs.controlledCountry;
+            std::string oldFaction = country->faction;
+
+            // Attempt a full identity change (name + color + divisions) via revolution
+            // if a distinct country exists in the data for this culture + ideology.
+            auto& cd = CountryData::instance();
+            std::string newName = cd.getCountryType(country->culture, ideologyArg);
+            bool didRevolution = !newName.empty()
+                                 && newName != oldName
+                                 && !gs.getCountry(newName);
+            if (didRevolution) {
+                country->revolution(ideologyArg, gs);
+                // gs.controlledCountry is now newName; country ptr is stale.
+            } else {
+                country->setIdeology({economic, social});
+            }
+
+            // Repaint political + ideology surfaces (revolution also skips map paint).
+            std::string currentName = gs.controlledCountry;
+            Country* current = gs.getCountry(currentName);
+            if (current && gs.politicalMapSurf && gs.regionsMapSurf) {
                 auto& rd = RegionData::instance();
-                for (int id : country->regions) {
+                Color ideColor = Helpers::getIdeologyColor(current->ideology[0], current->ideology[1]);
+                for (int id : current->regions) {
                     Vec2 loc = rd.getLocation(id);
-                    MapFunc::fillRegionMask(gs.ideologyMapSurf, gs.regionsMapSurf, id, loc.x, loc.y, ideColor);
+                    MapFunc::fillRegionMask(gs.politicalMapSurf, gs.regionsMapSurf, id, loc.x, loc.y, current->color);
+                    if (gs.ideologyMapSurf)
+                        MapFunc::fillRegionMask(gs.ideologyMapSurf, gs.regionsMapSurf, id, loc.x, loc.y, ideColor);
                 }
             }
             gs.mapDirty = true;
-            out.push_back("Set " + gs.controlledCountry + " ideology to " + country->ideologyName + ".");
+
+            // Eject from faction if ideology now diverges from the faction's alignment.
+            // After a revolution the old name is still in the faction's member list.
+            if (!oldFaction.empty()) {
+                Faction* fac = gs.getFaction(oldFaction);
+                std::string newIdeology = current ? current->ideologyName : ideologyArg;
+                if (fac && fac->ideology != newIdeology) {
+                    fac->removeCountry(didRevolution ? oldName : currentName, gs);
+                    out.push_back("Ejected from " + oldFaction + " (ideology divergence).");
+                }
+            }
+
+            out.push_back("Changed to " + currentName + " (" + (current ? current->ideologyName : ideologyArg) + ").");
         });
 
     cmdRegistry_.registerCommand("civilwar",

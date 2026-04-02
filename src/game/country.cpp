@@ -1441,7 +1441,10 @@ void Country::revolution(const std::string& ideology, GameState& gs) {
         newCountry->puppetTo = puppetTo;
 
 
-        newCountry->addRegions(regions, gs, true, false);
+        // Copy before iterating: addRegion removes regions from this->regions
+        // via removeRegion(), causing iterator invalidation if passed by reference.
+        const std::vector<int> regionsCopy = regions;
+        newCountry->addRegions(regionsCopy, gs, true, false);
 
 
         for (auto& div : divisions) {
