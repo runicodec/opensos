@@ -175,6 +175,33 @@ void GameScreen::registerCommands(App& app) {
             gs.mapDirty = true;
             out.push_back("Set " + gs.controlledCountry + " ideology to " + country->ideologyName + ".");
         });
+
+    cmdRegistry_.registerCommand("civilwar",
+        [appPtr](const ConsoleCmd& cmd, std::vector<std::string>& out) {
+            if (cmd.argv.size() < 2) {
+                out.push_back("Usage: civilwar <communist|nationalist|liberal|monarchist|nonaligned>");
+                return;
+            }
+            auto& gs = appPtr->gameState();
+            Country* country = gs.getCountry(gs.controlledCountry);
+            if (!country) {
+                out.push_back("No controlled country.");
+                return;
+            }
+            const std::string& ideology = cmd.argv[1];
+            auto& cd = CountryData::instance();
+            std::string rebelName = cd.getCountryType(country->culture, ideology);
+            if (rebelName.empty()) {
+                out.push_back("No " + ideology + " faction defined for culture: " + country->culture);
+                return;
+            }
+            if (gs.getCountry(rebelName)) {
+                out.push_back(rebelName + " already exists.");
+                return;
+            }
+            country->civilWar(rebelName, gs);
+            out.push_back("Civil war started: " + gs.controlledCountry + " vs " + rebelName + ".");
+        });
 }
 
 void GameScreen::enter(App& app) {

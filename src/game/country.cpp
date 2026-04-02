@@ -1385,6 +1385,20 @@ void Country::civilWar(const std::string& countryName, GameState& gs, bool popup
     rebel->spawnDivisions(gs);
     gs.registerCountry(countryName, std::move(rebel));
 
+    // The Country constructor adds regions with ignoreFill=true (skipping map paint)
+    // so the rebel's regions still show the loyalist's color. Repaint them now.
+    Country* rebelPtr = gs.getCountry(countryName);
+    if (rebelPtr && gs.politicalMapSurf && gs.regionsMapSurf) {
+        Color ideColor = Helpers::getIdeologyColor(rebelPtr->ideology[0], rebelPtr->ideology[1]);
+        for (int id : rebelPtr->regions) {
+            Vec2 loc = rd.getLocation(id);
+            MapFunc::fillRegionMask(gs.politicalMapSurf, gs.regionsMapSurf, id, loc.x, loc.y, rebelPtr->color);
+            if (gs.ideologyMapSurf) {
+                MapFunc::fillRegionMask(gs.ideologyMapSurf, gs.regionsMapSurf, id, loc.x, loc.y, ideColor);
+            }
+        }
+        gs.mapDirty = true;
+    }
 
     declareWar(countryName, gs, true, popup);
 }
