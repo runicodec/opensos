@@ -106,6 +106,20 @@ bool GameScreen::divisionInsideRect(const Division* div, const GameState& gs, in
 void GameScreen::registerCommands(App& app) {
     App* appPtr = &app;
 
+    cmdRegistry_.registerCommand("help",
+        [](const ConsoleCmd&, std::vector<std::string>& out) {
+            out.push_back("--- Commands ---");
+            out.push_back("help");
+            out.push_back("echo <text>");
+            out.push_back("money <amount>");
+            out.push_back("pp <amount>");
+            out.push_back("resource <oil|steel|aluminum|tungsten|chromium|rubber> <amount>");
+            out.push_back("spawn [amount]");
+            out.push_back("tag <country_name>");
+            out.push_back("ideology <communist|nationalist|liberal|monarchist|nonaligned>");
+            out.push_back("civilwar <communist|nationalist|liberal|monarchist|nonaligned>");
+        });
+
     cmdRegistry_.registerCommand("echo",
         [](const ConsoleCmd& cmd, std::vector<std::string>& out) {
             std::string result;
