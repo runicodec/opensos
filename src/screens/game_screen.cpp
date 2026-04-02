@@ -183,6 +183,25 @@ void GameScreen::registerCommands(App& app) {
             out.push_back("Now playing as " + target + ".");
         });
 
+    cmdRegistry_.registerCommand("spawn",
+        [appPtr](const ConsoleCmd& cmd, std::vector<std::string>& out) {
+            int amount = 1;
+            if (cmd.argv.size() >= 2) {
+                try {
+                    amount = std::stoi(cmd.argv[1]);
+                } catch (...) {
+                    out.push_back("Invalid amount: " + cmd.argv[1]);
+                    return;
+                }
+            }
+            if (amount < 1) { out.push_back("Amount must be >= 1."); return; }
+            auto& gs = appPtr->gameState();
+            Country* country = gs.getCountry(gs.controlledCountry);
+            if (!country) { out.push_back("No controlled country."); return; }
+            country->addDivision(gs, amount, -1, true, true);
+            out.push_back("Spawned " + std::to_string(amount) + "-stack division for " + gs.controlledCountry + ".");
+        });
+
     cmdRegistry_.registerCommand("ideology",
         [appPtr](const ConsoleCmd& cmd, std::vector<std::string>& out) {
             if (cmd.argv.size() < 2) {
