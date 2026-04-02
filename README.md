@@ -4,9 +4,10 @@ OpenSoS is a grand strategy war game where you guide a country through diplomacy
 
 ## How To Launch
 
-Currently, no releases of the game are available for end-users. However, work has been done to allow those with development knowledge to build the game from source using the [Nix](https://nixos.org/download/) package manager (specifically with [devenv](https://devenv.sh/)) on macOS and Linux systems. 
+No end-user releases are available yet. Contributors can build from source on Windows, macOS, and Linux — see [BUILDING.md](BUILDING.md) for instructions.
 
-Builds should work for Windows, macOS, and Linux.
+- **Windows**: CMake + MSVC + vcpkg
+- **macOS / Linux**: devenv (Nix)
 
 ## Basic Controls
 
@@ -19,11 +20,6 @@ Builds should work for Windows, macOS, and Linux.
 - Left click: select provinces, countries, or units
 - Left click and drag: box-select multiple divisions
 - Right click: move selected divisions
-
-## Included In This Release
-
-- Runtime assets and UI files
-- `devenv` development environment for systems with [Nix](https://nixos.org/download/) installed
 
 ## Credits
 
