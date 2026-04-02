@@ -284,9 +284,22 @@ void Country::update(GameState& gs) {
     electionSystem.update(gs, name);
 
 
-    if (!capitulated && !atWarWith.empty() &&
-        (regions.empty() || divisions.empty() || cities.empty()) &&
-        regions.size() < regionsBeforeWar.size()) {
+    // Capitulation conditions:
+    //   regions.empty()                      — no land left, always capitulate
+    //   divisions.empty()  + territory loss  — army wiped out AND lost ground
+    //   cities.empty()     + territory loss  — no cities AND lost ground
+    //   cities.empty()     + divisions.empty() — rebel case: spawned with no cities
+    //                                            and army destroyed; regionsBeforeWar
+    //                                            equals starting regions so the
+    //                                            territory-loss check never fires for them
+    bool lostTerritory = regions.size() < regionsBeforeWar.size();
+    bool noArmy        = divisions.empty();
+    bool noCities      = cities.empty();
+    bool shouldCapitulate = regions.empty()
+        || (noArmy   && lostTerritory)
+        || (noCities && lostTerritory)
+        || (noCities && noArmy);
+    if (!capitulated && !atWarWith.empty() && shouldCapitulate) {
         capitulated = true;
 
         for (size_t i = 0; i < divisions.size(); ) {
