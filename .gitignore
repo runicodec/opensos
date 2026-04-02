@@ -1,0 +1,22 @@
+# Build output
+build/
+
+# Devenv / Nix
+.devenv/
+.devenv.flake.nix
+devenv.lock
+
+# Runtime-generated files
+crash.log
+game.log
+imgui.ini
+settings.json
+assets/saves/
+assets/screenshots/
+
+# Windows distribution artifacts 
+**/*.dll
+**/*.exe
+
+# Claude Code
+.claude
