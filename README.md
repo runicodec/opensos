@@ -27,5 +27,5 @@ Builds should work for Windows, macOS, and Linux.
 
 ## Credits
 
-- [GavGrub](https://gavgrub.itch.io/): original creator of Spirits of Steel and 
-- [barrett-prjs](https://github.com/barrett-prjs): original author of "Spirits of Steel: Community Edition"
+- [GavGrub](https://gavgrub.itch.io/): original creator of [Spirits of Steel](https://gavgrub.itch.io/sos) and [Spirits of Steel: A New Dawn](https://gavgrub.itch.io/sosand)
+- [barrett-prjs](https://github.com/barrett-prjs): original author of [Spirits of Steel: Community Edition](https://github.com/barrett-prjs/SOSandCE)
